@@ -11,15 +11,15 @@ def execute(user_input, vectorstore, api_key):
 
     # 1. LLM 초기화
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash-exp",
+        model="gemini-flash-latest",
         google_api_key=api_key,
         temperature=0.0,
-        max_output_tokens=1024
+        max_output_tokens=500
     )
     
     # 2. 약어 변환
     norm_prompt = ChatPromptTemplate.from_template(
-        "사용자 입력을 보고 '공식 포켓몬 이름' 6개로 변환해. 오직 이름 6개를 쉼표로 구분해 출력해.\n입력: {input}"
+        "사용자 입력을 보고 '공식 포켓몬 영어이름' 6개로 변환해. 오직 이름 6개를 쉼표로 구분해 출력해.\n입력: {input}"
     )
     norm_chain = norm_prompt | llm | StrOutputParser()
     normalized_input = norm_chain.invoke({"input": user_input})

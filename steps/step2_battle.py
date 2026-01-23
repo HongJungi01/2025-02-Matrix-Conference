@@ -10,10 +10,10 @@ def execute(user_input, vectorstore, api_key):
     
     # 1. 초고속 LLM (토큰 300제한)
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash-exp",
+        model="gemini-flash-latest",
         google_api_key=api_key,
         temperature=0.0,
-        max_output_tokens=300 
+        max_output_tokens=500
     )
 
     # 2. 검색 (k=1, 현재 대면 중인 상대 정보만 보면 됨)
