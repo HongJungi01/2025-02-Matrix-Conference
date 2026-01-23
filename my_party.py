@@ -44,16 +44,16 @@ Careful Nature
 - Flare Blitz  
 - Knock Off
 
-Landorus @ Life Orb  
-Ability: Sheer Force  
-Tera Type: Poison  
-EVs: 4 HP / 252 SpA / 252 Spe  
-Timid Nature  
-IVs: 0 Atk  
-- Earth Power  
-- Sludge Bomb  
-- Substitute  
-- Protect
+Landorus-Therian @ Rocky Helmet  
+Ability: Intimidate  
+Shiny: Yes  
+Tera Type: Water  
+EVs: 252 HP / 252 Def / 4 Spe  
+Impish Nature  
+- Earthquake  
+- U-turn  
+- Stealth Rock  
+- Taunt
 
 Amoonguss @ Rocky Helmet  
 Ability: Regenerator  
