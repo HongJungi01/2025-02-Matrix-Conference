@@ -249,5 +249,52 @@
     "power": 70,
     "priority": 0,
     "accuracy": 100
+  },
+  "whirlwind": {
+    "name": "whirlwind",
+    "type": "Normal",
+    "category": "Status",
+    "power": 0,
+    "priority": -6,
+    "accuracy": null
+  },
+  "earthquake": {
+    "name": "earthquake",
+    "type": "Ground",
+    "category": "Physical",
+    "power": 100,
+    "priority": 0,
+    "accuracy": 100
+  },
+  "ruination": {
+    "name": "ruination",
+    "type": "Dark",
+    "category": "Special",
+    "power": 1,
+    "priority": 0,
+    "accuracy": 90
+  },
+  "stealthrock": {
+    "name": "stealthrock",
+    "type": "Normal",
+    "category": "Physical",
+    "power": 0,
+    "priority": 0
+  },
+  "spikes": {
+    "name": "spikes",
+    "type": "Ground",
+    "category": "Status",
+    "power": 0,
+    "priority": 0,
+    "accuracy": null
+  },
+  "Ruination": {
+    "name": "Ruination",
+    "type": "Dark",
+    "category": "Special",
+    "power": 1,
+    "priority": 0,
+    "accuracy": 90
   }
 }
