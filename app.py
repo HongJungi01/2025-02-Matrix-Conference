@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from Battle_Preparing.party_loader import load_party_from_file
 from Battle_Preparing.user_party import my_party
 from battle_state import current_battle  # Single Source of Truth
-from entry import analyze_entry_strategy, parse_opponent_input
+from entry import analyze_entry_strategy, parse_opponent_input, parse_recommended_selection
 from battle import analyze_battle_turn
 
 # 1. 페이지 설정
@@ -18,163 +18,140 @@ st.markdown("""
     .hp-bar { transition: width 0.5s; height: 20px; border-radius: 10px; }
     .stChatInput { bottom: 20px; }
     .block-container { padding-top: 2rem; }
+    /* 사이드바 스타일링 */
+    .status-text { font-size: 0.9rem; color: #555; }
+    .rank-text { font-weight: bold; color: #E03E3E; }
+    .stProgress > div > div > div > div { background-color: #4CAF50; }
 </style>
 """, unsafe_allow_html=True)
 
-# 3. 초기화
+# 3. 초기화 (세션 상태 관리)
 if "initialized" not in st.session_state:
     load_dotenv()
+    
+    # [Step 1] 파티 로드
     load_party_from_file("my_team.txt")
+    
+    # [Step 2] BattleState 초기화 (중요)
     current_battle.refresh_my_party()
     
+    # [Step 3] 세션 변수
     st.session_state.messages = []
     st.session_state.entry_analysis = None
     st.session_state.opponent_list = []
     st.session_state.initialized = True
 
 # ==============================================================================
-# [사이드바] 배틀 상태 대시보드
+# [사이드바] 배틀 상태 뷰어 (View Only Dashboard)
 # ==============================================================================
 with st.sidebar:
-    st.header("🎛️ 배틀 상태 (Dashboard)")
+    st.header("📊 배틀 현황판")
+    st.info("모든 상태 조작은 채팅으로 명령하세요.\n(예: '상대 딩루 교체', '내 피 50%')")
     
     if not os.getenv("GOOGLE_API_KEY"):
         st.error("API Key가 없습니다.")
         st.stop()
 
-    # ------------------------------------------------------------------
-    # [핵심] 1. Backend(BattleState) -> Frontend(SessionState) 강제 동기화
-    # AI가 내부 값을 바꿨을 때, 위젯이 이를 반영하도록 강제하는 코드입니다.
-    # ------------------------------------------------------------------
-    
-    # 1. 포켓몬 이름 동기화
+    st.divider()
+
+    # --- 1. 나의 상태 (My Status) ---
+    st.subheader("🟢 나의 필드")
     if current_battle.my_active:
-        st.session_state["sb_my"] = current_battle.my_active.name
-    if current_battle.opp_active:
-        st.session_state["sb_opp"] = current_battle.opp_active.name
-
-    # 2. HP 동기화
-    if current_battle.my_active:
-        st.session_state["sl_my_hp"] = int(current_battle.my_active.current_hp_percent)
-    if current_battle.opp_active:
-        st.session_state["sl_opp_hp"] = int(current_battle.opp_active.current_hp_percent)
-
-    # 3. 랭크 동기화
-    if current_battle.my_active:
-        st.session_state["ni_atk"] = current_battle.my_active.ranks['atk']
-        st.session_state["ni_spe"] = current_battle.my_active.ranks['spe']
-
-    # 4. 필드/날씨 동기화
-    # (None 값 처리 주의)
-    weather_val = current_battle.global_effects['weather'] if current_battle.global_effects['weather'] else "None"
-    st.session_state["sb_weather"] = weather_val
-    
-    terrain_val = current_battle.global_effects['terrain'] if current_battle.global_effects['terrain'] else "None"
-    st.session_state["sb_terrain"] = terrain_val
-    
-    st.session_state["cb_tr"] = current_battle.global_effects['trick_room']
-    st.session_state["cb_tail"] = current_battle.side_effects['me']['tailwind']
-    # 벽은 리플렉터를 대표값으로 사용
-    st.session_state["cb_wall"] = current_battle.side_effects['opp']['reflect']
-
-    # ------------------------------------------------------------------
-    # [UI 렌더링] 위젯 표시 및 사용자 입력 처리 (Frontend -> Backend)
-    # ------------------------------------------------------------------
-
-    # [1] 필드 포켓몬
-    st.subheader("1. 필드 포켓몬")
-    if my_party.team:
-        my_roster = list(my_party.team.keys())
-        # key="sb_my"를 통해 위에서 동기화된 값을 초기값으로 사용
-        my_active_name = st.selectbox("나", my_roster, key="sb_my")
+        me = current_battle.my_active
+        st.markdown(f"**{me.name}**")
         
-        # 사용자가 바꿨을 때 반영
-        if current_battle.my_active is None or current_battle.my_active.name != my_active_name:
-            current_battle.set_active("me", my_active_name)
-            st.rerun()
-
-    opp_roster = st.session_state.opponent_list if st.session_state.opponent_list else ["Unknown"]
-    opp_active_name = st.selectbox("상대", opp_roster, key="sb_opp")
-    
-    if opp_active_name != "Unknown":
-        if current_battle.opp_active is None or current_battle.opp_active.name != opp_active_name:
-            current_battle.set_active("opp", opp_active_name)
-            st.rerun()
+        # HP Bar (읽기 전용)
+        hp_val = int(me.current_hp_percent)
+        st.progress(hp_val / 100)
+        st.caption(f"HP: {hp_val}% | 상태: {me.status_condition or '정상'}")
+        
+        # 랭크 표시 (0이 아닌 것만)
+        ranks = []
+        for k, v in me.ranks.items():
+            if v != 0:
+                ranks.append(f"{k.upper()} {v:+d}")
+        
+        if ranks:
+            st.markdown(f"<span class='rank-text'>{', '.join(ranks)}</span>", unsafe_allow_html=True)
+            
+        # 휘발성 상태
+        volatiles = [k for k,v in me.volatile_status.items() if v]
+        if volatiles:
+            st.warning(f"⚠️ {', '.join(volatiles)}")
+    else:
+        st.markdown("*(대기 중)*")
 
     st.divider()
 
-    # [2] HP 관리
-    st.subheader("2. 체력 (HP)")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if current_battle.my_active:
-            my_hp = st.slider("나 (%)", 0, 100, key="sl_my_hp")
-            # 사용자가 슬라이더를 움직여서 값이 달라지면 업데이트
-            if my_hp != int(current_battle.my_active.current_hp_percent):
-                current_battle.my_active.current_hp_percent = my_hp
-        else:
-            st.info("준비 중")
-            
-    with col2:
-        if current_battle.opp_active:
-            opp_hp = st.slider("상대 (%)", 0, 100, key="sl_opp_hp")
-            if opp_hp != int(current_battle.opp_active.current_hp_percent):
-                current_battle.opp_active.current_hp_percent = opp_hp
-        else:
-            st.info("준비 중")
+    # --- 2. 상대 상태 (Opponent Status) ---
+    st.subheader("🔴 상대 필드")
+    if current_battle.opp_active:
+        opp = current_battle.opp_active
+        st.markdown(f"**{opp.name}**")
+        
+        # HP Bar
+        opp_hp_val = int(opp.current_hp_percent)
+        st.progress(opp_hp_val / 100)
+        st.caption(f"HP: {opp_hp_val}% | 상태: {opp.status_condition or '정상'}")
+        
+        # 랭크
+        opp_ranks = []
+        for k, v in opp.ranks.items():
+            if v != 0:
+                opp_ranks.append(f"{k.upper()} {v:+d}")
+                
+        if opp_ranks:
+            st.markdown(f"<span class='rank-text'>{', '.join(opp_ranks)}</span>", unsafe_allow_html=True)
+
+        # 정보 (확정 여부 표시)
+        item_txt = f"{opp.info['item']} (확정)" if opp.confirmed['item'] else "❓ 미확인"
+        st.markdown(f"🎒 도구: {item_txt}")
+        
+        # 휘발성 상태
+        opp_volatiles = [k for k,v in opp.volatile_status.items() if v]
+        if opp_volatiles:
+            st.warning(f"⚠️ {', '.join(opp_volatiles)}")
+        
+    else:
+        st.markdown("*(대기 중)*")
 
     st.divider()
 
-    # [3] 필드 및 랭크
-    st.subheader("3. 랭크 및 필드")
+    # --- 3. 필드 환경 (Environment) ---
+    st.subheader("🌐 필드 환경")
     
-    r1, r2 = st.columns(2)
-    with r1:
-        new_atk = st.number_input("내 공격 랭크", -6, 6, key="ni_atk")
-        if current_battle.my_active and new_atk != current_battle.my_active.ranks['atk']:
-            current_battle.my_active.ranks['atk'] = new_atk
-            
-    with r2:
-        new_spe = st.number_input("내 스피드 랭크", -6, 6, key="ni_spe")
-        if current_battle.my_active and new_spe != current_battle.my_active.ranks['spe']:
-            current_battle.my_active.ranks['spe'] = new_spe
-
-    # 날씨
-    w_opts = ["None", "Sun", "Rain", "Sand", "Snow"]
-    new_w = st.selectbox("날씨", w_opts, key="sb_weather")
-    val_w = None if new_w == "None" else new_w
-    if val_w != current_battle.global_effects['weather']:
-        current_battle.global_effects['weather'] = val_w
-
-    # 필드
-    t_opts = ["None", "Electric", "Grassy", "Psychic", "Misty"]
-    new_t = st.selectbox("필드", t_opts, key="sb_terrain")
-    val_t = None if new_t == "None" else new_t
-    if val_t != current_battle.global_effects['terrain']:
-        current_battle.global_effects['terrain'] = val_t
-
-    # 체크박스
-    is_tr = st.checkbox("트릭룸 (Trick Room)", key="cb_tr")
-    if is_tr != current_battle.global_effects['trick_room']:
-        current_battle.global_effects['trick_room'] = is_tr
+    # 날씨/필드/룸
+    w = current_battle.global_effects['weather']
+    t = current_battle.global_effects['terrain']
+    tr = current_battle.global_effects['trick_room']
+    
+    st.write(f"🌤️ 날씨: **{w if w else '없음'}**")
+    st.write(f"🌱 필드: **{t if t else '없음'}**")
+    if tr: st.error("🌀 트릭룸 활성화")
+    
+    # 순풍/벽 상태 표시
+    st.caption("--- 진영 효과 ---")
+    
+    col_me, col_opp = st.columns(2)
+    with col_me:
+        st.markdown("**[나]**")
+        effs = []
+        if current_battle.side_effects['me']['tailwind']: effs.append("순풍")
+        if current_battle.side_effects['me']['reflect']: effs.append("벽")
+        if not effs: st.write("-")
+        else: st.write(", ".join(effs))
         
-    c1, c2 = st.columns(2)
-    with c1:
-        is_tail = st.checkbox("내 순풍", key="cb_tail")
-        if is_tail != current_battle.side_effects['me']['tailwind']:
-            current_battle.side_effects['me']['tailwind'] = is_tail
-            
-    with c2:
-        is_wall = st.checkbox("상대 벽", key="cb_wall")
-        # 단순화: 체크하면 리플렉터/빛의장막 둘 다 켜짐 (필요시 분리 가능)
-        if is_wall != current_battle.side_effects['opp']['reflect']:
-            current_battle.side_effects['opp']['reflect'] = is_wall
-            current_battle.side_effects['opp']['light_screen'] = is_wall
+    with col_opp:
+        st.markdown("**[상대]**")
+        o_effs = []
+        if current_battle.side_effects['opp']['tailwind']: o_effs.append("순풍")
+        if current_battle.side_effects['opp']['reflect']: o_effs.append("벽")
+        if not o_effs: st.write("-")
+        else: st.write(", ".join(o_effs))
 
 
 # ==============================================================================
-# [메인 화면]
+# [메인 화면] 채팅 인터페이스
 # ==============================================================================
 st.title("🤖 포켓몬 배틀 AI 컨설턴트")
 
@@ -185,26 +162,45 @@ with tab1:
     st.header("상대 엔트리 분석")
     st.info("상대 포켓몬 6마리를 입력하세요.")
     
-    entry_input = st.text_input("입력 (예: 날치머, 망나뇽, 딩루 ...)")
+    entry_input = st.text_input("입력 (예: 날치머 망나뇽 딩루 물거폰 우라오스 미라이돈 ...)")
     
     if st.button("분석 시작"):
         if entry_input:
             with st.spinner("Gemini 3.0이 시뮬레이션을 돌리고 있습니다..."):
+                # 1. 파싱
                 opp_list = parse_opponent_input(entry_input)
                 
                 if opp_list:
                     st.session_state.opponent_list = opp_list
+                    
+                    # 2. BattleState 초기화
                     current_battle.initialize_opponent(opp_list)
                     
+                    # 3. 분석 실행
                     analysis = analyze_entry_strategy(opp_list)
                     st.session_state.entry_analysis = analysis
                     
-                    st.success(f"엔트리 등록 완료: {', '.join(opp_list)}")
+                    # [자동 반영] 추천 선출 파싱하여 내 선봉 설정
+                    try:
+                        # parse_recommended_selection 함수가 entry.py에 있다고 가정
+                        # (없으면 try-except로 무시됨)
+                        from entry import parse_recommended_selection
+                        rec_team = parse_recommended_selection(analysis)
+                        if rec_team:
+                            lead = rec_team[0]
+                            # 내 파티에 있는지 확인
+                            if lead in my_party.team:
+                                current_battle.set_active("me", lead)
+                                current_battle.set_my_selection(rec_team) # 벤치 리스트 갱신
+                    except ImportError:
+                        pass
+                    except Exception as e:
+                        print(f"선출 자동 반영 실패: {e}")
+
+                    st.success(f"엔트리 등록 완료!")
                     st.rerun()
                 else:
-                    st.error("입력을 해석할 수 없습니다.")
-        else:
-            st.warning("포켓몬 이름을 입력해주세요.")
+                    st.error("입력 해석 실패")
     
     if st.session_state.entry_analysis:
         st.markdown("---")
@@ -212,39 +208,38 @@ with tab1:
 
 # --- Tab 2: 배틀 ---
 with tab2:
-    st.header("실시간 턴 가이드")
+    # 대화 기록 표시
+    chat_container = st.container()
+    with chat_container:
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
     
-    if not st.session_state.opponent_list:
-        st.warning("👈 먼저 '선출 분석' 탭에서 상대 엔트리를 입력해주세요.")
-    else:
-        # 채팅창
-        chat_container = st.container()
-        with chat_container:
-            for msg in st.session_state.messages:
-                with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
-        
-        # 입력창
-        st.markdown("---")
-        with st.container():
-            c_in, c_chk = st.columns([5, 1])
-            with c_in:
-                user_input = st.chat_input("상황 입력 (예: 상대가 지진을 써서 피가 반 남았어)")
-            with c_chk:
-                opp_first = st.checkbox("상대 선공?", key="chk_opp_first", help="상대가 먼저 행동했으면 체크")
+    st.markdown("---")
+    
+    # 입력창
+    with st.container():
+        c1, c2 = st.columns([5, 1])
+        with c1:
+            user_input = st.chat_input("상황을 입력하세요 (예: 상대 미라이돈 등장, 내 피 50%)")
+        with c2:
+            opp_first = st.checkbox("상대 선공?", key="chk_opp_first", help="체크 시 스피드/스카프 추론 작동")
 
-            if user_input:
-                st.session_state.messages.append({"role": "user", "content": user_input})
-                with st.chat_message("user"):
-                    st.markdown(user_input)
-                
-                with st.chat_message("assistant"):
-                    place = st.empty()
-                    with st.spinner("전략 수립 중..."):
-                        response = analyze_battle_turn(user_input, opp_first)
-                        place.markdown(response)
-                        
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                
-                # [중요] AI가 바꾼 상태를 UI에 반영하기 위해 리런
-                st.rerun()
+        if user_input:
+            # 1. 사용자 메시지
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            with st.chat_message("user"):
+                st.markdown(user_input)
+            
+            # 2. AI 응답 (상태 업데이트 + 계산 + 조언)
+            with st.chat_message("assistant"):
+                place = st.empty()
+                with st.spinner("계산 및 전략 수립 중..."):
+                    # [핵심] battle.py 호출 -> 상태 갱신 -> 조언 생성
+                    response = analyze_battle_turn(user_input, opp_first)
+                    place.markdown(response)
+            
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            
+            # 3. 화면 갱신 (변경된 상태를 사이드바에 반영)
+            st.rerun()

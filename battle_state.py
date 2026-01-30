@@ -22,7 +22,7 @@ class BattlePokemon:
         
         # 1. 기본 상태
         self.current_hp_percent = 100.0
-        self.status_condition = None 
+        self.status_condition = None # 영구 상태이상
         self.is_fainted = False
         
         # 2. 랭크 (-6 ~ +6)
@@ -65,6 +65,7 @@ class BattlePokemon:
 
     # --- [상태 조작] ---
     def update_hp(self, amount):
+        """ amount: 변동량 (음수=데미지, 양수=회복) """
         self.current_hp_percent = max(0, min(100, self.current_hp_percent + amount))
         if self.current_hp_percent == 0: self.is_fainted = True
 
@@ -76,6 +77,7 @@ class BattlePokemon:
         if key in self.volatile_status: self.volatile_status[key] = is_active
 
     def reveal_info(self, category, value):
+        """ 정보 확정 (도구, 테라타입 등) """
         self.info[category] = value
         self.confirmed[category] = True
         print(f"💡 [정보 갱신] {self.name} {category} -> {value}")
@@ -124,11 +126,15 @@ class BattleState:
         self.turn_count = 1
         self.my_active = None
         self.opp_active = None
+        
         self.opp_full_roster = []
         self.opp_revealed_party = {}
         
         # [수정] 초기에는 비워두고 refresh_my_party 호출 시 채움
         self.my_party_status = {}
+        
+        # [NEW] 내가 선출한 3마리 명단 (벤치 관리용)
+        self.my_entry_selection = [] 
         
         self.global_effects = {"weather": None, "terrain": None, "trick_room": False}
         self.side_effects = {
@@ -147,6 +153,14 @@ class BattleState:
 
     def initialize_opponent(self, roster_list):
         self.opp_full_roster = roster_list
+
+    # [NEW] 선출 명단 등록 메서드
+    def set_my_selection(self, selection_list):
+        """ 
+        선출된 3마리 리스트를 저장합니다. 
+        """
+        self.my_entry_selection = selection_list
+        print(f"✅ 내 선출 확정: {self.my_entry_selection}")
 
     def set_active(self, side, pokemon_name):
         if side == "me":
@@ -176,30 +190,41 @@ class BattleState:
             if self.opp_active: self.opp_active.update_hp(update_data["opp_hp_change_input"])
 
         # 3. 랭크
-        if self.my_active:
-            for stat in ['atk', 'def', 'spa', 'spd', 'spe']:
-                change = update_data.get(f"my_rank_{stat}")
-                if change: self.my_active.set_rank(stat, change)
-        if self.opp_active:
-            for stat in ['atk', 'def', 'spa', 'spd', 'spe']:
-                change = update_data.get(f"opp_rank_{stat}")
-                if change: self.opp_active.set_rank(stat, change)
+        if self.my_active and update_data.get("my_rank_change"):
+            for stat, change in update_data["my_rank_change"].items():
+                self.my_active.set_rank(stat, change)
+                
+        if self.opp_active and update_data.get("opp_rank_change"):
+            for stat, change in update_data["opp_rank_change"].items():
+                self.opp_active.set_rank(stat, change)
 
         # 4. 필드
         if update_data.get("weather"): self.global_effects['weather'] = update_data["weather"]
         if update_data.get("terrain"): self.global_effects['terrain'] = update_data["terrain"]
-        if "trick_room" in update_data: self.global_effects['trick_room'] = update_data["trick_room"]
+        if update_data.get("trick_room") is not None: self.global_effects['trick_room'] = update_data["trick_room"]
         
-        if "tailwind_me" in update_data: self.side_effects['me']['tailwind'] = update_data["tailwind_me"]
-        if "tailwind_opp" in update_data: self.side_effects['opp']['tailwind'] = update_data["tailwind_opp"]
+        if update_data.get("my_tailwind") is not None: self.side_effects['me']['tailwind'] = update_data["my_tailwind"]
+        if update_data.get("opp_tailwind") is not None: self.side_effects['opp']['tailwind'] = update_data["opp_tailwind"]
+        
+        if update_data.get("opp_reflect") is not None: self.side_effects['opp']['reflect'] = update_data["opp_reflect"]
+        if update_data.get("opp_light_screen") is not None: self.side_effects['opp']['light_screen'] = update_data["opp_light_screen"]
 
-        # 5. 정보 확정
+        # 5. 상태이상
+        if update_data.get("my_status_change"):
+            status = update_data["my_status_change"]
+            self.my_active.status_condition = None if status == "Clear" else status
+            
+        if update_data.get("opp_status_change"):
+            status = update_data["opp_status_change"]
+            self.opp_active.status_condition = None if status == "Clear" else status
+
+        # 6. 정보 확정
         if self.opp_active:
             if update_data.get("opp_item"): self.opp_active.reveal_info("item", update_data["opp_item"])
             if update_data.get("opp_tera_type"): self.opp_active.reveal_info("tera_type", update_data["opp_tera_type"])
             if update_data.get("opp_move_used"): self.opp_active.add_known_move(update_data["opp_move_used"])
 
-        # 6. 턴
+        # 7. 턴
         if update_data.get("turn_end"):
             self.turn_count += 1
 
@@ -215,13 +240,30 @@ class BattleState:
         vol_my = [k for k,v in self.my_active.volatile_status.items() if v]
         vol_opp = [k for k,v in opp.volatile_status.items() if v]
 
+        # [수정] 선출 명단 반영하여 벤치 리스트 작성
+        if self.my_entry_selection:
+            candidates = self.my_entry_selection
+        else:
+            candidates = list(self.my_party_status.keys())
+
+        my_bench_list = [
+            name for name in candidates 
+            if name != self.my_active.name 
+            and name in self.my_party_status
+            and not self.my_party_status[name].is_fainted
+        ]
+
         return f"""
         [🏟️ Turn {self.turn_count}]
         🟢 **나 ({self.my_active.name})**: HP {self.my_active.current_hp_percent:.1f}% | 상태 {self.my_active.status_condition or '정상'} {vol_my}
+           - 🏥 **대기 포켓몬**: {', '.join(my_bench_list) or '없음 (Last One)'}
+           - 랭크: {self.my_active.ranks}
+           
         🔴 **상대 ({opp.name})**: HP {opp.current_hp_percent:.1f}% | 상태 {opp.status_condition or '정상'} {vol_opp}
            - 랭크: {opp.ranks}
            - 파티 현황: 생존[{', '.join(revealed)}] / 미확인[{unknown}마리]
            - 정보: 도구[{opp_item}] / 기술[{', '.join(opp.info['moves'])}]
+           
         🌐 **환경**: 날씨[{self.global_effects['weather']}] / 필드[{self.global_effects['terrain']}] / 룸[{self.global_effects['trick_room']}]
         🛡️ **벽/순풍**: 나[{'순풍' if self.side_effects['me']['tailwind'] else ''}] vs 상대[{'순풍' if self.side_effects['opp']['tailwind'] else ''}]
         """

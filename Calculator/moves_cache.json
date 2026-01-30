@@ -241,5 +241,13 @@
     "power": 130,
     "priority": 0,
     "accuracy": 90
+  },
+  "Volt Switch": {
+    "name": "Volt Switch",
+    "type": "Electric",
+    "category": "Special",
+    "power": 70,
+    "priority": 0,
+    "accuracy": 100
   }
 }

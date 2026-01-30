@@ -259,6 +259,50 @@ def analyze_entry_strategy(opponent_input):
     except Exception as e:
         return f"❌ Gemini 3.0 분석 중 오류 발생: {str(e)}"
     
+def parse_recommended_selection(ai_response_text):
+    """
+    [New] AI의 분석 결과 텍스트에서 '나의 추천 선출' 3마리를 추출하여 리스트로 반환
+    """
+    print("🔄 AI 추천 선출을 파싱하여 상태에 반영 중...")
+    
+    parser_template = """
+    당신은 '포켓몬 선출 리포트 파서'입니다.
+    아래의 분석 리포트에서 AI가 추천한 **[나의 선출 포켓몬 3마리]**의 이름을 정확히 추출하세요.
+    반드시 **영어 공식 명칭**으로 변환해야 합니다.
+
+    [분석 리포트 내용]
+    {report_text}
+
+    [출력 형식 (JSON)]
+    {{
+        "lead": "PokemonName", (선봉)
+        "back1": "PokemonName", (후속1)
+        "back2": "PokemonName"  (후속2)
+    }}
+    """
+    
+    prompt = PromptTemplate.from_template(parser_template)
+    chain = prompt | llm
+    
+    try:
+        response = chain.invoke({"report_text": ai_response_text})
+        content = extract_clean_content(response)
+        
+        # JSON 파싱
+        clean_json = content.replace("```json", "").replace("```", "").strip()
+        data = json.loads(clean_json)
+        
+        # 리스트로 변환 (선봉, 후속1, 후속2)
+        selection = [data.get("lead"), data.get("back1"), data.get("back2")]
+        # None 제거
+        selection = [p for p in selection if p]
+        
+        return selection
+        
+    except Exception as e:
+        print(f"❌ 선출 파싱 실패: {e}")
+        return []
+    
 # --------------------------------------------------------------------------
 # [실행 예시]
 if __name__ == "__main__":
