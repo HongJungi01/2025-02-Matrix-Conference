@@ -30,6 +30,28 @@ llm = ChatGoogleGenerativeAI(
 )
 
 # --------------------------------------------------------------------------
+# [Helper 0] 토큰 정보 추출 함수
+# --------------------------------------------------------------------------
+def get_token_info(response):
+    """LangChain 응답 객체에서 토큰 사용량을 추출합니다."""
+    try:
+        usage = None
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            usage = response.usage_metadata
+        elif hasattr(response, 'response_metadata') and 'usage_metadata' in response.response_metadata:
+            usage = response.response_metadata['usage_metadata']
+            
+        if usage:
+            return {
+                "input_tokens": usage.get('input_tokens', 0),
+                "output_tokens": usage.get('output_tokens', 0),
+                "total_tokens": usage.get('total_tokens', 0)
+            }
+    except Exception:
+        pass
+    return {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+
+# --------------------------------------------------------------------------
 # [Helper 1] 시뮬레이션 실행 함수 (수정됨)
 # --------------------------------------------------------------------------
 def run_simulation(my_party_data, opponent_list):
@@ -145,6 +167,9 @@ def extract_clean_content(response):
         return f"Error: {e}"
 
 def parse_opponent_input(user_input):
+    """
+    Returns: (parsed_list, token_usage_dict)
+    """
     print(f"🔄 입력된 파티 정보를 표준화(English Mapping) 중입니다...")
     parser_template = """
     당신은 포켓몬 이름 번역기입니다. 
@@ -155,15 +180,25 @@ def parse_opponent_input(user_input):
     """
     try:
         response = llm.invoke(parser_template.format(user_input=user_input))
+        
+        # 토큰 정보 추출
+        token_info = get_token_info(response)
+        print(f"💰 [Parser] Tokens: I:{token_info['input_tokens']} + O:{token_info['output_tokens']} = {token_info['total_tokens']}")
+
         content = extract_clean_content(response)
         clean_content = content.replace("```json", "").replace("```python", "").replace("```", "").strip()
+        
+        parsed_data = []
         try:
-            return json.loads(clean_content)
+            parsed_data = json.loads(clean_content)
         except:
-            return ast.literal_eval(clean_content)
+            parsed_data = ast.literal_eval(clean_content)
+            
+        return parsed_data, token_info
+        
     except Exception as e:
         print(f"❌ 이름 변환 실패: {e}")
-        return []
+        return [], {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
 def format_my_party_info():
     if not my_party.team: return "❌ 내 파티 정보 없음"
@@ -181,13 +216,21 @@ def format_my_party_info():
 def analyze_entry_strategy(opponent_input):
     """
     [Entry Phase] RAG + Calculator + SpeedChecker를 모두 결합한 최종 분석
+    Returns: (analysis_text, token_usage_dict)
     """
+    total_tokens = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    
+    # 1. 입력 파싱 (입력이 문자열인 경우에만)
     if isinstance(opponent_input, str):
-        opponent_list = parse_opponent_input(opponent_input)
+        opponent_list, parse_tokens = parse_opponent_input(opponent_input)
+        # 토큰 누적
+        for k in total_tokens: total_tokens[k] += parse_tokens[k]
     else:
         opponent_list = opponent_input
 
-    if not opponent_list: return "❌ 상대 정보를 해석할 수 없습니다."
+    # 실패 시 빈 문자열과 0 토큰 반환
+    if not opponent_list: 
+        return "❌ 상대 정보를 해석할 수 없습니다.", total_tokens
 
     print(f"🔍 [Entry Phase] '{len(opponent_list)}'마리 분석 및 대면 시뮬레이션 실행 중...")
 
@@ -204,7 +247,7 @@ def analyze_entry_strategy(opponent_input):
 
     # 3. 프롬프트 설계
     template = """
-    당신은 세계 챔피언급 '포켓몬 랭크배틀(3vs3 싱글)' 전문 AI 코치입니다.
+    당신은 '포켓몬 랭크배틀(3vs3 싱글)' 전문 AI 코치입니다.
     제공된 **정확한 시뮬레이션 데이터(Simulation Report)**와 통계를 바탕으로 승리 전략을 수립하세요.
 
     ---
@@ -226,16 +269,16 @@ def analyze_entry_strategy(opponent_input):
     3. **선출 구성**: 선봉을 이길 수 있는 포켓몬 1마리 + 일관성 있는 에이스 1마리 + 쿠션 1마리로 구성하세요.
 
     [결과 리포트 양식]
-    1. **👁️ 상대 예상 선출 (Top 3)**: [이름], [이름], [이름]
+    1. **상대 예상 선출 (Top 3)**: [이름], [이름], [이름]
        - 이유: (선봉 확률 통계 및 내 파티와의 상성 고려)
     
-    2. **👑 나의 추천 선출**:
-       - **🚀 선봉(Lead): [포켓몬 이름]**
+    2. **나의 추천 선출**:
+       - **선봉(Lead): [포켓몬 이름]**
          - 선정 이유: **(시뮬레이션 결과 인용 필수)** 예: "상대 딩루 상대로 선공이며, 인파이트로 확정 1타가 나옵니다."
-       - **🛡️ 후속(Back): [포켓몬 이름], [포켓몬 이름]**
+       - **후속(Back): [포켓몬 이름], [포켓몬 이름]**
          - 역할: (에이스 / 쿠션 / 스위퍼)
 
-    3. **⚡ 승리 플랜 (Game Plan)**:
+    3. **승리 플랜 (Game Plan)**:
        - (초반 운영과 주의해야 할 상대의 테라스탈/도구 변수를 3줄 요약)
     """
 
@@ -254,14 +297,22 @@ def analyze_entry_strategy(opponent_input):
         end_time = time.time()
         print(f"⏱️ 분석 완료! (소요 시간: {end_time - start_time:.2f}초)")
 
-        return extract_clean_content(response)
+        # 토큰 정보 추출
+        main_tokens = get_token_info(response)
+        print(f"💰 [Strategy] Tokens: I:{main_tokens['input_tokens']} + O:{main_tokens['output_tokens']} = {main_tokens['total_tokens']}")
+        
+        # 토큰 누적
+        for k in total_tokens: total_tokens[k] += main_tokens[k]
+
+        return extract_clean_content(response), total_tokens
 
     except Exception as e:
-        return f"❌ Gemini 3.0 분석 중 오류 발생: {str(e)}"
+        return f"❌ Gemini 3.0 분석 중 오류 발생: {str(e)}", total_tokens
     
 def parse_recommended_selection(ai_response_text):
     """
     [New] AI의 분석 결과 텍스트에서 '나의 추천 선출' 3마리를 추출하여 리스트로 반환
+    Returns: (selection_list, token_usage_dict)
     """
     print("🔄 AI 추천 선출을 파싱하여 상태에 반영 중...")
     
@@ -286,6 +337,11 @@ def parse_recommended_selection(ai_response_text):
     
     try:
         response = chain.invoke({"report_text": ai_response_text})
+        
+        # 토큰 정보 추출
+        token_info = get_token_info(response)
+        print(f"💰 [Selection] Tokens: I:{token_info['input_tokens']} + O:{token_info['output_tokens']} = {token_info['total_tokens']}")
+
         content = extract_clean_content(response)
         
         # JSON 파싱
@@ -297,11 +353,11 @@ def parse_recommended_selection(ai_response_text):
         # None 제거
         selection = [p for p in selection if p]
         
-        return selection
+        return selection, token_info
         
     except Exception as e:
         print(f"❌ 선출 파싱 실패: {e}")
-        return []
+        return [], {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
     
 # --------------------------------------------------------------------------
 # [실행 예시]
@@ -320,5 +376,11 @@ if __name__ == "__main__":
     user_input = "날치머, 물라오스, 망나뇽, 물거폰, 미라이돈, 날뛰는우레"
     
     print(f"\n🔍 테스트 입력: {user_input}")
-    result = analyze_entry_strategy(user_input)
-    print("\n" + result)
+    
+    result_text, token_data = analyze_entry_strategy(user_input)
+    print("\n" + result_text)
+    print("\n📊 Total Token Usage in Main Analysis:", token_data)
+    
+    # 추가 파싱 테스트
+    selection, sel_tokens = parse_recommended_selection(result_text)
+    print(f"\nSelecton: {selection}, Tokens: {sel_tokens}")

@@ -13,10 +13,6 @@ SAVE_PATH = os.path.join("Statistics", "lead_stats.txt")
 def fetch_lead_stats():
     print(f"📡 선봉 데이터 다운로드: {URL}")
     response = requests.get(URL)
-    
-    if response.status_code != 200:
-        print("❌ 데이터를 찾을 수 없습니다.")
-        return
 
     # 파일로 저장
     if not os.path.exists("Statistics"):

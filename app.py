@@ -39,6 +39,13 @@ if "initialized" not in st.session_state:
     st.session_state.messages = []
     st.session_state.entry_analysis = None
     st.session_state.opponent_list = []
+    
+    # [New] 토큰 관리 변수
+    st.session_state.entry_tokens = {"parser": 0, "strategy": 0, "selection": 0}
+    # 기존 battle_token_total 대신 상세 내역 저장을 위한 딕셔너리로 초기화
+    if "battle_tokens" not in st.session_state:
+        st.session_state.battle_tokens = {"parser": 0, "analysis": 0} 
+    
     st.session_state.initialized = True
 
 # ==============================================================================
@@ -168,7 +175,7 @@ with tab1:
         if entry_input:
             with st.spinner("Gemini 3.0이 시뮬레이션을 돌리고 있습니다..."):
                 # 1. 파싱
-                opp_list = parse_opponent_input(entry_input)
+                opp_list, t1 = parse_opponent_input(entry_input)
                 
                 if opp_list:
                     st.session_state.opponent_list = opp_list
@@ -177,27 +184,29 @@ with tab1:
                     current_battle.initialize_opponent(opp_list)
                     
                     # 3. 분석 실행
-                    analysis = analyze_entry_strategy(opp_list)
+                    analysis, t2 = analyze_entry_strategy(opp_list)
                     st.session_state.entry_analysis = analysis
                     
-                    # [자동 반영] 추천 선출 파싱하여 내 선봉 설정
+                    # 4. 선출 추출
+                    t3 = {"total_tokens": 0}
                     try:
-                        # parse_recommended_selection 함수가 entry.py에 있다고 가정
-                        # (없으면 try-except로 무시됨)
-                        from entry import parse_recommended_selection
-                        rec_team = parse_recommended_selection(analysis)
+                        rec_team, t3 = parse_recommended_selection(analysis)
                         if rec_team:
                             lead = rec_team[0]
-                            # 내 파티에 있는지 확인
                             if lead in my_party.team:
                                 current_battle.set_active("me", lead)
-                                current_battle.set_my_selection(rec_team) # 벤치 리스트 갱신
-                    except ImportError:
-                        pass
+                                current_battle.set_my_selection(rec_team)
                     except Exception as e:
                         print(f"선출 자동 반영 실패: {e}")
 
-                    st.success(f"엔트리 등록 완료!")
+                    # [New] 토큰 정보 저장
+                    st.session_state.entry_tokens = {
+                        "parser": t1.get('total_tokens', 0),
+                        "strategy": t2.get('total_tokens', 0),
+                        "selection": t3.get('total_tokens', 0)
+                    }
+
+                    st.success("✅ 전략 수립 및 선출 반영 완료!")
                     st.rerun()
                 else:
                     st.error("입력 해석 실패")
@@ -205,6 +214,18 @@ with tab1:
     if st.session_state.entry_analysis:
         st.markdown("---")
         st.markdown(st.session_state.entry_analysis)
+        
+        # 하단 토큰 리포트
+        st.divider()
+        et = st.session_state.entry_tokens
+        total_entry = et['parser'] + et['strategy'] + et['selection']
+        
+        st.caption("📊 **Token Usage Report (Entry Phase)**")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("1. 이름 파싱", f"{et['parser']}")
+        c2.metric("2. 전략 분석", f"{et['strategy']}")
+        c3.metric("3. 선출 추출", f"{et['selection']}")
+        c4.metric("💰 Total", f"{total_entry}", delta_color="off")
 
 # --- Tab 2: 배틀 ---
 with tab2:
@@ -236,10 +257,34 @@ with tab2:
                 place = st.empty()
                 with st.spinner("계산 및 전략 수립 중..."):
                     # [핵심] battle.py 호출 -> 상태 갱신 -> 조언 생성
-                    response = analyze_battle_turn(user_input, opp_first)
-                    place.markdown(response)
+                    response, parser_tokens, analyze_tokens = analyze_battle_turn(user_input, opp_first)
+                    
+                    # [Token Update] 채팅 턴마다 토큰 누적 (Index 2: Total Token 가정)
+                    p_cnt = parser_tokens[2] if parser_tokens and len(parser_tokens) > 2 else 0
+                    a_cnt = analyze_tokens[2] if analyze_tokens and len(analyze_tokens) > 2 else 0
+                    
+                    st.session_state.battle_tokens["parser"] += p_cnt
+                    st.session_state.battle_tokens["analysis"] += a_cnt
+                    
+                    # [수정] 응답 메시지 끝에 이번 턴 토큰 정보 추가
+                    token_info = f"\n\n--- \n*💎 Cost: {p_cnt + a_cnt} Tokens (Parser: {p_cnt}, Analysis: {a_cnt})*"
+                    full_response = response + token_info
+                    
+                    place.markdown(full_response)
             
-            st.session_state.messages.append({"role": "assistant", "content": response})
+            # 저장할 때도 토큰 정보가 포함된 버전을 저장
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
             
             # 3. 화면 갱신 (변경된 상태를 사이드바에 반영)
             st.rerun()
+
+    # [New] 하단 토큰 리포트 (배틀 누적)
+    st.divider()
+    bt = st.session_state.battle_tokens
+    total_battle = bt['parser'] + bt['analysis']
+    
+    st.caption("📊 **Token Usage Report (Battle Phase - Cumulative)**")
+    bc1, bc2, bc3 = st.columns(3)
+    bc1.metric("1. 상황 파싱", f"{bt['parser']}")
+    bc2.metric("2. 전략 분석", f"{bt['analysis']}")
+    bc3.metric("💰 Total", f"{total_battle}", delta_color="off")

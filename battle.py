@@ -140,6 +140,15 @@ def parse_and_update_state(user_input):
             "my_roster": ", ".join(my_roster),
             "opp_roster": ", ".join(opp_roster)
         })
+
+        usage = response.usage_metadata
+        token_result = [
+            usage.get('input_tokens', 0),
+            usage.get('output_tokens', 0),
+            usage.get('total_tokens', 0)
+        ]
+
+        print(token_result)
         
         json_text = extract_clean_content(response)
         json_text = json_text.replace("```json", "").replace("```", "").strip()
@@ -211,7 +220,7 @@ def parse_and_update_state(user_input):
     # [최종 반영] 랭크/상태이상/필드 등 나머지 변수 일괄 적용
     current_battle.apply_llm_update(parsed_data)
 
-    return True, f"✅ 상태 반영됨: {', '.join(updates_log)}"
+    return True, f"✅ 상태 반영됨: {', '.join(updates_log)}", token_result
 
 # -------------------------------------------------------------------------
 # [Step 2] 시뮬레이션 및 조언 (Advisor)
@@ -264,7 +273,7 @@ def analyze_battle_turn(user_input, opp_moved_first=False):
     """
     
     # 1. 상태 업데이트 (LLM Parser)
-    success, update_msg = parse_and_update_state(user_input)
+    success, update_msg, parser_tokens = parse_and_update_state(user_input)
     
     # 2. 시뮬레이션 (업데이트된 상태 기준)
     sim_report, meta = run_battle_simulation_report()
@@ -322,6 +331,17 @@ def analyze_battle_turn(user_input, opp_moved_first=False):
             "user_input": user_input,
             "update_msg": update_msg
         })
-        return extract_clean_content(res)
+
+        usage = res.usage_metadata
+
+        analyze_tokens = [
+            usage.get('input_tokens', 0),
+            usage.get('output_tokens', 0),
+            usage.get('total_tokens', 0)
+        ]
+
+        print(analyze_tokens)
+
+        return extract_clean_content(res), parser_tokens, analyze_tokens
     except Exception as e:
         return f"Error: {e}"

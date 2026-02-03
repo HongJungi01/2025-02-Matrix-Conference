@@ -77,9 +77,9 @@ def get_pokemon_summary(pokemon_name):
     # 선봉 확률 정보
     lead_prob = LEAD_STATS.get(pokemon_name, 0.0)
     lead_info = ""
-    if lead_prob >= 20.0:
+    if lead_prob >= 10.0:
         lead_info = f"🔥선봉출전율: {lead_prob}% (매우 높음)"
-    elif lead_prob >= 10.0:
+    elif lead_prob >= 5.0:
         lead_info = f"⚠️선봉출전율: {lead_prob}% (높음)"
     elif lead_prob > 0:
         lead_info = f"선봉출전율: {lead_prob}%"
@@ -88,7 +88,7 @@ def get_pokemon_summary(pokemon_name):
 
     # 주요 정보 추출 (문자열로 변환)
     items = ", ".join([f"{i[0]}" for i in data.get('Items', [])[:3]])
-    moves = ", ".join([f"{m[0]}" for m in data.get('Moves', [])[:5]])
+    moves = ", ".join([f"{m[0]}" for m in data.get('Moves', [])[:7]])
     teras = ", ".join([f"{t[0]}" for t in data.get('TeraTypes', [])[:3]])
     if not teras: teras = "정보 없음"
     spread = data.get('Spreads', [])[0][0] if data.get('Spreads') else "정보 없음"
@@ -96,10 +96,10 @@ def get_pokemon_summary(pokemon_name):
 
     summary = f"""
     [{pokemon_name}] (전체사용률: {usage_rate}%) | {lead_info}
-    - 🎒 도구: {items}
-    - 💎 테라: {teras}
-    - ⚡ 기술: {moves}
-    - 📊 형태: {spread}
+    - 도구: {items}
+    - 테라: {teras}
+    - 기술: {moves}
+    - 노력치 분배: {spread}
     """
     return summary.strip()
 
@@ -136,10 +136,10 @@ def get_pokemon_raw_data(pokemon_name):
     data = SMOGON_DB[pokemon_name]
     
     return {
-        # 기술 TOP 10 (이름만 리스트로) -> 방어 시뮬레이션용
-        "predicted_moves": [m[0] for m in data.get('Moves', [])[:10]],
+        # 기술 TOP 7 (이름만 리스트로) -> 방어 시뮬레이션용
+        "predicted_moves": [m[0] for m in data.get('Moves', [])[:7]],
         
-        # 도구 TOP 5 -> 아이템 추론용
+        # 도구 TOP 3 -> 아이템 추론용
         "predicted_items": [i[0] for i in data.get('Items', [])[:5]],
         
         # 특성 TOP 3
