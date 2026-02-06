@@ -183,7 +183,6 @@ def parse_opponent_input(user_input):
         
         # 토큰 정보 추출
         token_info = get_token_info(response)
-        print(f"💰 [Parser] Tokens: I:{token_info['input_tokens']} + O:{token_info['output_tokens']} = {token_info['total_tokens']}")
 
         content = extract_clean_content(response)
         clean_content = content.replace("```json", "").replace("```python", "").replace("```", "").strip()
@@ -193,6 +192,8 @@ def parse_opponent_input(user_input):
             parsed_data = json.loads(clean_content)
         except:
             parsed_data = ast.literal_eval(clean_content)
+
+        print(f"✅ 이름 변환 성공: {parsed_data}")
             
         return parsed_data, token_info
         
@@ -269,14 +270,17 @@ def analyze_entry_strategy(opponent_input):
     3. **선출 구성**: 선봉을 이길 수 있는 포켓몬 1마리 + 일관성 있는 에이스 1마리 + 쿠션 1마리로 구성하세요.
 
     [결과 리포트 양식]
-    1. **상대 예상 선출 (Top 3)**: [이름], [이름], [이름]
-       - 이유: (선봉 확률 통계 및 내 파티와의 상성 고려)
+
     
-    2. **나의 추천 선출**:
+    1. **나의 추천 선출**:
+       - **세 마리 구성 요약: [포켓몬 이름], [포켓몬 이름], [포켓몬 이름]**
        - **선봉(Lead): [포켓몬 이름]**
          - 선정 이유: **(시뮬레이션 결과 인용 필수)** 예: "상대 딩루 상대로 선공이며, 인파이트로 확정 1타가 나옵니다."
        - **후속(Back): [포켓몬 이름], [포켓몬 이름]**
          - 역할: (에이스 / 쿠션 / 스위퍼)
+
+    2. **상대 예상 선출 (Top 3)**: [이름], [이름], [이름]
+       - 이유: (선봉 확률 통계 및 내 파티와의 상성 고려)
 
     3. **승리 플랜 (Game Plan)**:
        - (초반 운영과 주의해야 할 상대의 테라스탈/도구 변수를 3줄 요약)
@@ -299,7 +303,6 @@ def analyze_entry_strategy(opponent_input):
 
         # 토큰 정보 추출
         main_tokens = get_token_info(response)
-        print(f"💰 [Strategy] Tokens: I:{main_tokens['input_tokens']} + O:{main_tokens['output_tokens']} = {main_tokens['total_tokens']}")
         
         # 토큰 누적
         for k in total_tokens: total_tokens[k] += main_tokens[k]
@@ -340,7 +343,6 @@ def parse_recommended_selection(ai_response_text):
         
         # 토큰 정보 추출
         token_info = get_token_info(response)
-        print(f"💰 [Selection] Tokens: I:{token_info['input_tokens']} + O:{token_info['output_tokens']} = {token_info['total_tokens']}")
 
         content = extract_clean_content(response)
         

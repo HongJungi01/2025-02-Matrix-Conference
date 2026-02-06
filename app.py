@@ -201,9 +201,9 @@ with tab1:
 
                     # [New] 토큰 정보 저장
                     st.session_state.entry_tokens = {
-                        "parser": t1.get('total_tokens', 0),
-                        "strategy": t2.get('total_tokens', 0),
-                        "selection": t3.get('total_tokens', 0)
+                        "input_tokens": t1.get('input_tokens', 0),
+                        "input_tokens": t2.get('output_tokens', 0),
+                        "total_tokens": t3.get('total_tokens', 0)
                     }
 
                     st.success("✅ 전략 수립 및 선출 반영 완료!")
@@ -218,14 +218,12 @@ with tab1:
         # 하단 토큰 리포트
         st.divider()
         et = st.session_state.entry_tokens
-        total_entry = et['parser'] + et['strategy'] + et['selection']
         
         st.caption("📊 **Token Usage Report (Entry Phase)**")
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("1. 이름 파싱", f"{et['parser']}")
-        c2.metric("2. 전략 분석", f"{et['strategy']}")
-        c3.metric("3. 선출 추출", f"{et['selection']}")
-        c4.metric("💰 Total", f"{total_entry}", delta_color="off")
+        c1.metric("1. 입력 토큰", f"{et['input_tokens']}")
+        c2.metric("2. 출력 토큰", f"{et['output_tokens']}")
+        c3.metric("3. 총 사용량량", f"{et['total_tokens']}")
 
 # --- Tab 2: 배틀 ---
 with tab2:

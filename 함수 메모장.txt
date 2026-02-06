@@ -1,0 +1,6 @@
+parse_opponent_input
+analyze_entry_strategy
+parse_recommended_selection
+
+parse_and_update_state
+analyze_battle_turn
