@@ -188,7 +188,6 @@ with tab1:
                     st.session_state.entry_analysis = analysis
                     
                     # 4. 선출 추출
-                    t3 = {"total_tokens": 0}
                     try:
                         rec_team, t3 = parse_recommended_selection(analysis)
                         if rec_team:
@@ -201,9 +200,9 @@ with tab1:
 
                     # [New] 토큰 정보 저장
                     st.session_state.entry_tokens = {
-                        "input_tokens": t1.get('input_tokens', 0),
-                        "input_tokens": t2.get('output_tokens', 0),
-                        "total_tokens": t3.get('total_tokens', 0)
+                        "input_tokens": t1.get('input_tokens', 0) + t2.get('input_tokens', 0) + t3.get('input_tokens', 0),
+                        "output_tokens": t1.get('output_tokens') + t2.get('output_tokens', 0) + t3.get('output_tokens', 0),
+                        "total_tokens": t1.get('total_tokens', 0) + t2.get('total_tokens', 0) + t3.get('total_tokens', 0)
                     }
 
                     st.success("✅ 전략 수립 및 선출 반영 완료!")
@@ -223,7 +222,7 @@ with tab1:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("1. 입력 토큰", f"{et['input_tokens']}")
         c2.metric("2. 출력 토큰", f"{et['output_tokens']}")
-        c3.metric("3. 총 사용량량", f"{et['total_tokens']}")
+        c3.metric("3. 총 사용량", f"{et['total_tokens']}")
 
 # --- Tab 2: 배틀 ---
 with tab2:
